@@ -1,234 +1,223 @@
-import tkinter as tk
-from tkinter import Listbox, END
+import sys
 import os
 import re
-import sys
 import ctypes
+from PyQt5 import QtWidgets, QtCore, QtGui
 
 HOSTS_PATH = r"C:\Windows\System32\drivers\etc\hosts"
 REDIRECT_IP = "127.0.0.1"
-
-# Regex to match blocked sites (excluding .test domains)
 BLOCKED_SITE_REGEX = re.compile(r"^127\.0\.0\.1\s+([\w.-]+)$", re.MULTILINE)
 
-def custom_messagebox(root, title, message, icon="info", type="ok"):
-    # icon: "info", "warning", "error", "question"
-    # type: "ok", "yesno"
-    win = tk.Toplevel(root)
-    win.title(title)
-    win.configure(bg="#282a36")
-    win.resizable(False, False)
-    win.grab_set()
-    win.transient(root)
+# Dialogues personnalisés
+class CustomMessageBox(QtWidgets.QDialog):
+    def __init__(self, parent, title, message, icon="info", type_="ok"):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.FramelessWindowHint)
+        self.setStyleSheet("background-color: #282a36; color: #f8f8f2;")
+        self.result = None
+        layout = QtWidgets.QVBoxLayout(self)
+        icon_map = {
+            "info": "\u2139",
+            "warning": "\u26A0",
+            "error": "\u2716",
+            "question": "\u2753"
+        }
+        icon_label = QtWidgets.QLabel(icon_map.get(icon, ""))
+        icon_label.setAlignment(QtCore.Qt.AlignCenter)
+        icon_label.setStyleSheet("font-size: 38px; color: #50fa7b;")
+        layout.addWidget(icon_label)
+        msg_label = QtWidgets.QLabel(message)
+        msg_label.setAlignment(QtCore.Qt.AlignCenter)
+        msg_label.setWordWrap(True)
+        msg_label.setStyleSheet("font-size: 14px;")
+        layout.addWidget(msg_label)
+        btn_layout = QtWidgets.QHBoxLayout()
+        if type_ == "ok":
+            ok_btn = QtWidgets.QPushButton("OK")
+            ok_btn.setStyleSheet("background:#44475a; color:#f8f8f2; font-weight:bold; padding:8px 24px; border:none;")
+            ok_btn.clicked.connect(self.accept)
+            btn_layout.addWidget(ok_btn)
+        elif type_ == "yesno":
+            yes_btn = QtWidgets.QPushButton("Oui")
+            yes_btn.setStyleSheet("background:#50fa7b; color:#23272f; font-weight:bold; padding:8px 24px; border:none;")
+            yes_btn.clicked.connect(self.accept)
+            btn_layout.addWidget(yes_btn)
+            no_btn = QtWidgets.QPushButton("Non")
+            no_btn.setStyleSheet("background:#44475a; color:#f8f8f2; font-weight:bold; padding:8px 24px; border:none;")
+            no_btn.clicked.connect(self.reject)
+            btn_layout.addWidget(no_btn)
+        layout.addLayout(btn_layout)
+        self.setFixedSize(360, 180)
+        self.setWindowModality(QtCore.Qt.ApplicationModal)
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
 
-    # Centrage dynamique sur la fenêtre principale
-    root.update_idletasks()
-    root_x = root.winfo_rootx()
-    root_y = root.winfo_rooty()
-    root_w = root.winfo_width()
-    root_h = root.winfo_height()
-    win_w = 360
-    win_h = 180
-    x = root_x + (root_w // 2) - (win_w // 2)
-    y = root_y + (root_h // 2) - (win_h // 2)
-    win.geometry(f"{win_w}x{win_h}+{x}+{y}")
+    @staticmethod
+    def show(parent, title, message, icon="info", type_="ok"):
+        dlg = CustomMessageBox(parent, title, message, icon, type_)
+        result = dlg.exec_()
+        return result == QtWidgets.QDialog.Accepted
 
-    icon_map = {
-        "info": "\u2139",
-        "warning": "\u26A0",
-        "error": "\u2716",
-        "question": "\u2753"
-    }
-    icon_label = tk.Label(win, text=icon_map.get(icon, ""), font=("Segoe UI", 32), bg="#282a36", fg="#50fa7b")
-    icon_label.pack(pady=(18, 0))
+class CustomAskString(QtWidgets.QDialog):
+    def __init__(self, parent, title, prompt):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.FramelessWindowHint)
+        self.setStyleSheet("background-color: #282a36; color: #f8f8f2;")
+        self.value = None
+        layout = QtWidgets.QVBoxLayout(self)
+        label = QtWidgets.QLabel(prompt)
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        label.setStyleSheet("font-size: 14px;")
+        layout.addWidget(label)
+        self.entry = QtWidgets.QLineEdit()
+        self.entry.setStyleSheet("background:#44475a; color:#f8f8f2; padding:8px; border:none; font-size:14px;")
+        layout.addWidget(self.entry)
+        btn_layout = QtWidgets.QHBoxLayout()
+        ok_btn = QtWidgets.QPushButton("Valider")
+        ok_btn.setStyleSheet("background:#50fa7b; color:#23272f; font-weight:bold; padding:8px 24px; border:none;")
+        ok_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(ok_btn)
+        cancel_btn = QtWidgets.QPushButton("Annuler")
+        cancel_btn.setStyleSheet("background:#44475a; color:#f8f8f2; font-weight:bold; padding:8px 24px; border:none;")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+        self.setFixedSize(360, 160)
+        self.setWindowModality(QtCore.Qt.ApplicationModal)
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
 
-    msg_label = tk.Label(win, text=message, font=("Segoe UI", 12), bg="#282a36", fg="#f8f8f2", wraplength=320, justify="center")
-    msg_label.pack(padx=24, pady=(12, 18))
+    @staticmethod
+    def get(parent, title, prompt):
+        dlg = CustomAskString(parent, title, prompt)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            return dlg.entry.text()
+        return None
 
-    result = {"value": None}
+class TitleBar(QtWidgets.QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.setFixedHeight(38)
+        self.setStyleSheet("background:transparent;")
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(8, 0, 8, 0)
+        # Icône bouclier
+        icon = QtWidgets.QLabel()
+        pix = QtGui.QPixmap(32, 32)
+        pix.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pix)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setBrush(QtGui.QColor("#50fa7b"))
+        painter.setPen(QtGui.QPen(QtGui.QColor("#282a36"), 2))
+        points = [QtCore.QPointF(16,3), QtCore.QPointF(29,10), QtCore.QPointF(26,26), QtCore.QPointF(16,31), QtCore.QPointF(6,26), QtCore.QPointF(3,10)]
+        painter.drawPolygon(QtGui.QPolygonF(points))
+        painter.setPen(QtGui.QPen(QtGui.QColor("#282a36"), 2))
+        painter.drawLine(16,6,16,28)
+        painter.end()
+        icon.setPixmap(pix)
+        icon.setStyleSheet("background:transparent;")
+        layout.addWidget(icon)
+        # Titre
+        title = QtWidgets.QLabel("Gestionnaire de blocage de sites web")
+        title.setStyleSheet("color:#50fa7b; font-size:15px; font-weight:bold; background:transparent;")
+        layout.addWidget(title)
+        layout.addStretch()
+        # Boutons
+        btn_style = (
+            "QPushButton {border:none; background:transparent; color:#bcbcbc; font-size:16px; width:32px; height:32px;} "
+            "QPushButton:hover {background:#44475a; color:#23272f;}"
+        )
+        self.min_btn = QtWidgets.QPushButton("🗕")
+        self.min_btn.setStyleSheet(btn_style)
+        self.min_btn.clicked.connect(self.parent.showMinimized)
+        layout.addWidget(self.min_btn)
+        self.max_btn = QtWidgets.QPushButton("🗖")
+        self.max_btn.setStyleSheet(btn_style)
+        self.max_btn.clicked.connect(self.toggle_max)
+        layout.addWidget(self.max_btn)
+        close_btn_style = (
+            "QPushButton {border:none; background:transparent; color:#bcbcbc; font-size:16px; width:32px; height:32px;} "
+            "QPushButton:hover {background:#ff5555; color:#fff;}"
+        )
+        self.close_btn = QtWidgets.QPushButton("✕")
+        self.close_btn.setStyleSheet(close_btn_style)
+        self.close_btn.clicked.connect(self.parent.close)
+        layout.addWidget(self.close_btn)
+        self._mouse_pos = None
 
-    def on_ok():
-        result["value"] = True
-        win.destroy()
-    def on_cancel():
-        result["value"] = False
-        win.destroy()
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self._mouse_pos = event.globalPos() - self.parent.frameGeometry().topLeft()
+            event.accept()
 
-    btn_frame = tk.Frame(win, bg="#282a36")
-    btn_frame.pack(pady=(0, 18))
-    if type == "ok":
-        ok_btn = tk.Button(btn_frame, text="OK", font=("Segoe UI", 11, "bold"), bg="#44475a", fg="#f8f8f2",
-                           activebackground="#6272a4", activeforeground="#f8f8f2", bd=0, relief="flat", width=10, command=on_ok)
-        ok_btn.pack()
-        win.bind("<Return>", lambda e: on_ok())
-    elif type == "yesno":
-        yes_btn = tk.Button(btn_frame, text="Oui", font=("Segoe UI", 11, "bold"), bg="#50fa7b", fg="#23272f",
-                            activebackground="#6272a4", activeforeground="#f8f8f2", bd=0, relief="flat", width=10, command=on_ok)
-        yes_btn.pack(side=tk.LEFT, padx=8)
-        no_btn = tk.Button(btn_frame, text="Non", font=("Segoe UI", 11, "bold"), bg="#44475a", fg="#f8f8f2",
-                           activebackground="#6272a4", activeforeground="#f8f8f2", bd=0, relief="flat", width=10, command=on_cancel)
-        no_btn.pack(side=tk.LEFT, padx=8)
-        win.bind("<Return>", lambda e: on_ok())
-        win.bind("<Escape>", lambda e: on_cancel())
+    def mouseMoveEvent(self, event):
+        if self._mouse_pos and event.buttons() == QtCore.Qt.LeftButton:
+            self.parent.move(event.globalPos() - self._mouse_pos)
+            event.accept()
 
-    win.wait_window()
-    return result["value"]
+    def mouseReleaseEvent(self, event):
+        self._mouse_pos = None
 
-def custom_askstring(root, title, prompt):
-    win = tk.Toplevel(root)
-    win.title(title)
-    win.configure(bg="#282a36")
-    win.resizable(False, False)
-    win.grab_set()
-    win.transient(root)
+    def toggle_max(self):
+        if self.parent.isMaximized():
+            self.parent.showNormal()
+        else:
+            self.parent.showMaximized()
 
-    # Centrage dynamique sur la fenêtre principale
-    root.update_idletasks()
-    root_x = root.winfo_rootx()
-    root_y = root.winfo_rooty()
-    root_w = root.winfo_width()
-    root_h = root.winfo_height()
-    win_w = 360
-    win_h = 160
-    x = root_x + (root_w // 2) - (win_w // 2)
-    y = root_y + (root_h // 2) - (win_h // 2)
-    win.geometry(f"{win_w}x{win_h}+{x}+{y}")
-
-    label = tk.Label(win, text=prompt, font=("Segoe UI", 12), bg="#282a36", fg="#f8f8f2", wraplength=320, justify="center")
-    label.pack(padx=24, pady=(18, 8))
-
-    entry = tk.Entry(win, font=("Segoe UI", 12), bg="#44475a", fg="#f8f8f2", insertbackground="#f8f8f2", width=32, relief="flat")
-    entry.pack(padx=24, pady=(0, 18))
-    entry.focus_set()
-
-    result = {"value": None}
-    def on_ok():
-        result["value"] = entry.get()
-        win.destroy()
-    def on_cancel():
-        win.destroy()
-
-    btn_frame = tk.Frame(win, bg="#282a36")
-    btn_frame.pack(pady=(0, 18))
-    ok_btn = tk.Button(btn_frame, text="Valider", font=("Segoe UI", 11, "bold"), bg="#50fa7b", fg="#23272f",
-                       activebackground="#6272a4", activeforeground="#f8f8f2", bd=0, relief="flat", width=10, command=on_ok)
-    ok_btn.pack(side=tk.LEFT, padx=8)
-    cancel_btn = tk.Button(btn_frame, text="Annuler", font=("Segoe UI", 11, "bold"), bg="#44475a", fg="#f8f8f2",
-                           activebackground="#6272a4", activeforeground="#f8f8f2", bd=0, relief="flat", width=10, command=on_cancel)
-    cancel_btn.pack(side=tk.LEFT, padx=8)
-
-    win.bind("<Return>", lambda e: on_ok())
-    win.bind("<Escape>", lambda e: on_cancel())
-
-    win.wait_window()
-    return result["value"]
-
-class WebsiteBlockerApp:
-    def __init__(self, root):
-        self.root = root
-        # Fenêtre sans bordure et taille fixe
-        self.root.overrideredirect(True)
-        self.root.resizable(False, False)
-        self.root.geometry("520x540")  # Taille fixe
-        #self.root.title("Website Blocker")
-        # Ajout d'une icône à la fenêtre principale (optionnel, Windows .ico)
-        # self.root.iconbitmap("lock.ico")  # Si vous avez un .ico
-        self.is_maximized = False
-        self.normal_geometry = self.root.geometry()
+class WebsiteBlockerApp(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
+        self.setFixedSize(520, 540)
+        self.setStyleSheet("background:#23272f;")
+        self.setWindowIcon(QtGui.QIcon("app_icon.ico"))  # Ajout de l'icône à la fenêtre
         self.sites = []
-        self.create_widgets()
+        self.init_ui()
         self.load_blocked_sites()
 
-    def create_widgets(self):
-        self.root.configure(bg="#23272f")
-
-        # En-tête custom avec boutons réduire/aggrandir/fermer
-        self.header_bar = tk.Frame(self.root, bg="#181a20", height=38)
-        self.header_bar.pack(fill="x", side="top")
-        self.header_bar.pack_propagate(False)
-
-        # Icône bouclier dans l'en-tête
-        icon_canvas = tk.Canvas(self.header_bar, width=32, height=32, bg="#181a20", highlightthickness=0)
-        icon_canvas.pack(side=tk.LEFT, padx=(10, 0), pady=3)
-        icon_canvas.create_polygon(
-            16, 3, 29, 10, 26, 26, 16, 31, 6, 26, 3, 10,
-            fill="#50fa7b", outline="#282a36", width=2
-        )
-        icon_canvas.create_line(16, 6, 16, 28, fill="#282a36", width=2)
-
-        # Titre dans l'en-tête
-        title = tk.Label(self.header_bar, text="Gestionnaire de blocage de sites web", font=("Segoe UI", 13, "bold"),
-                         bg="#181a20", fg="#50fa7b")
-        title.pack(side=tk.LEFT, padx=(10, 0))
-
-        # Boutons réduire, aggrandir, fermer (style Windows)
-        btn_style = {"bd": 0, "relief": "flat", "width": 3, "height": 1, "font": ("Segoe UI", 12, "bold")}
-        close_btn = tk.Button(self.header_bar, text="✕", command=self.close_window,
-                              bg="#181a20", fg="#ff5555", activebackground="#282a36", activeforeground="#ff5555", **btn_style, cursor="hand2")
-        close_btn.pack(side=tk.RIGHT, padx=(0, 8), pady=4)
-        maximize_btn = tk.Button(self.header_bar, text="🗖", command=self.toggle_maximize_window,
-                                 bg="#181a20", fg="#f8f8f2", activebackground="#282a36", activeforeground="#50fa7b", **btn_style, cursor="hand2")
-        maximize_btn.pack(side=tk.RIGHT, padx=(0, 2), pady=4)
-        minimize_btn = tk.Button(self.header_bar, text="🗕", command=self.minimize_window,
-                                 bg="#181a20", fg="#f8f8f2", activebackground="#282a36", activeforeground="#50fa7b", **btn_style, cursor="hand2")
-        minimize_btn.pack(side=tk.RIGHT, padx=(0, 2), pady=4)
-
-        # Permet de déplacer la fenêtre en glissant l'en-tête
-        self.header_bar.bind("<ButtonPress-1>", self.start_move)
-        self.header_bar.bind("<B1-Motion>", self.do_move)
-        title.bind("<ButtonPress-1>", self.start_move)
-        title.bind("<B1-Motion>", self.do_move)
-        icon_canvas.bind("<ButtonPress-1>", self.start_move)
-        icon_canvas.bind("<B1-Motion>", self.do_move)
-
-        # Encadrement de la liste
-        list_frame = tk.Frame(self.root, bg="#282a36", bd=2, relief="groove")
-        list_frame.pack(padx=30, pady=(20, 10), fill="both", expand=True)  # fill both & expand
-
-        self.listbox = Listbox(
-            list_frame, width=50, font=("Segoe UI", 13), bg="#282a36", fg="#f8f8f2",
-            selectbackground="#6272a4", selectforeground="#f8f8f2", borderwidth=0,
-            highlightthickness=0, relief="flat", activestyle="none"
-        )
-        self.listbox.pack(padx=10, pady=10, fill="both", expand=True)  # fill both & expand
-
-        # Scrollbar stylée
-        scrollbar = tk.Scrollbar(
-            list_frame, orient="vertical", command=self.listbox.yview,
-            bg="#44475a", troughcolor="#23272f", bd=0, highlightthickness=0
-        )
-        scrollbar.pack(side="right", fill="y")
-        self.listbox.config(yscrollcommand=scrollbar.set)
-
-        # Permet au list_frame de propager la taille à ses enfants
-        list_frame.pack_propagate(True)
-
-        btn_frame = tk.Frame(self.root, bg="#23272f")
-        btn_frame.pack(pady=10, fill="x")
-        btn_frame.pack_propagate(False)
-        btn_frame.grid_columnconfigure(0, weight=1)
-        btn_frame.grid_columnconfigure(1, weight=1)
-
-        style_btn = {"font": ("Segoe UI", 11, "bold"), "bg": "#44475a", "fg": "#f8f8f2", "activebackground": "#6272a4", "activeforeground": "#f8f8f2", "bd": 0, "relief": "flat", "width": 18, "height": 2, "cursor": "hand2"}
-
-        self.add_btn = tk.Button(btn_frame, text="Ajouter un blocage", command=self.add_site, **style_btn)
-        self.add_btn.grid(row=0, column=0, padx=8, pady=0, sticky="e")
-
-        self.remove_btn = tk.Button(btn_frame, text="Supprimer le blocage", command=self.remove_site, **style_btn)
-        self.remove_btn.grid(row=0, column=1, padx=8, pady=0, sticky="w")
-
+    def init_ui(self):
+        vbox = QtWidgets.QVBoxLayout(self)
+        vbox.setContentsMargins(0,0,0,0)
+        vbox.setSpacing(0)
+        self.title_bar = TitleBar(self)
+        vbox.addWidget(self.title_bar)
+        # Liste
+        list_frame = QtWidgets.QFrame()
+        list_frame.setStyleSheet("background:#282a36; border:2px groove #44475a; border-radius:6px;")
+        list_layout = QtWidgets.QVBoxLayout(list_frame)
+        list_layout.setContentsMargins(10,10,10,10)
+        self.listbox = QtWidgets.QListWidget()
+        self.listbox.setStyleSheet("QListWidget {background:#282a36; color:#f8f8f2; font-size:15px; border:none;} QListWidget::item:selected {background:#6272a4; color:#f8f8f2;}")
+        list_layout.addWidget(self.listbox)
+        vbox.addWidget(list_frame, 1)
+        # Boutons
+        btn_frame = QtWidgets.QWidget()
+        btn_layout = QtWidgets.QHBoxLayout(btn_frame)
+        btn_layout.setContentsMargins(30,0,30,0)
+        style_btn = "QPushButton {background:#44475a; color:#f8f8f2; font-weight:bold; font-size:13px; border:none; border-radius:5px; padding:12px 0;} QPushButton:hover {background:#6272a4;}"
+        self.add_btn = QtWidgets.QPushButton("Ajouter un blocage")
+        self.add_btn.setStyleSheet(style_btn)
+        self.add_btn.clicked.connect(self.add_site)
+        btn_layout.addWidget(self.add_btn)
+        self.remove_btn = QtWidgets.QPushButton("Supprimer le blocage")
+        self.remove_btn.setStyleSheet(style_btn)
+        self.remove_btn.clicked.connect(self.remove_site)
+        btn_layout.addWidget(self.remove_btn)
+        vbox.addWidget(btn_frame)
         # Footer
-        footer = tk.Label(self.root, text="par MultiHServices", font=("Segoe UI", 9), bg="#23272f", fg="#6272a4")
-        footer.pack(side=tk.BOTTOM, pady=5, fill="x")  # fill x pour suivre la largeur
-
-        # Ajout d'un binding pour resize dynamique
-        self.root.bind("<Configure>", self.on_resize)
+        footer = QtWidgets.QLabel("par MultiHServices")
+        footer.setAlignment(QtCore.Qt.AlignCenter)
+        footer.setStyleSheet("color:#6272a4; font-size:11px;")
+        vbox.addWidget(footer)
 
     def load_blocked_sites(self):
         self.sites = []
-        self.listbox.delete(0, END)
+        self.listbox.clear()
         if not os.path.exists(HOSTS_PATH):
-            custom_messagebox("Erreur", f"Fichier hosts introuvable: {HOSTS_PATH}", icon="error")
+            CustomMessageBox.show(self, "Erreur", f"Fichier hosts introuvable: {HOSTS_PATH}", icon="error")
             return
         with open(HOSTS_PATH, "r", encoding="utf-8") as f:
             for line in f:
@@ -240,45 +229,44 @@ class WebsiteBlockerApp:
                     if not (site.endswith(".test") or site == "kubernetes.docker.internal") and site not in self.sites:
                         self.sites.append(site)
         for site in self.sites:
-            self.listbox.insert(END, site)
+            self.listbox.addItem(site)
 
     def add_site(self):
-        site = custom_askstring(self.root, "Ajouter un site", "Nom du site à bloquer (ex: site.com):")
+        site = CustomAskString.get(self, "Ajouter un site", "Nom du site à bloquer (ex: site.com):")
         if site:
             site = site.strip().lower()
             if site.startswith("www."):
                 site = site[4:]
-            # Vérifie que le site a une extension (ex: .com, .fr, etc.)
             if not re.match(r"^[\w.-]+\.[a-zA-Z]{2,}$", site):
-                custom_messagebox(self.root, "Refusé", "Le site doit contenir une extension valide (ex: .com, .fr, .net, etc.)", icon="warning")
+                CustomMessageBox.show(self, "Refusé", "Le site doit contenir une extension valide (ex: .com, .fr, .net, etc.)", icon="warning")
                 return
             if site.endswith(".test") or site == "kubernetes.docker.internal":
-                custom_messagebox(self.root, "Refusé", "Ce domaine ne peut pas être bloqué.", icon="warning")
+                CustomMessageBox.show(self, "Refusé", "Ce domaine ne peut pas être bloqué.", icon="warning")
                 return
             if site in self.sites:
-                custom_messagebox(self.root, "Déjà bloqué", f"{site} est déjà bloqué.", icon="info")
+                CustomMessageBox.show(self, "Déjà bloqué", f"{site} est déjà bloqué.", icon="info")
                 return
             try:
                 with open(HOSTS_PATH, "a", encoding="utf-8") as f:
                     f.write(f"{REDIRECT_IP} {site}\n")
                     f.write(f"{REDIRECT_IP} www.{site}\n")
                 self.load_blocked_sites()
-                custom_messagebox(self.root, "Succès", f"{site} bloqué avec succès.", icon="info")
+                CustomMessageBox.show(self, "Succès", f"{site} bloqué avec succès.", icon="info")
             except PermissionError:
-                custom_messagebox(self.root, "Erreur", "Permission refusée. Lancez ce programme en tant qu'administrateur.", icon="error")
+                CustomMessageBox.show(self, "Erreur", "Permission refusée. Lancez ce programme en tant qu'administrateur.", icon="error")
 
     def remove_site(self):
-        selection = self.listbox.curselection()
-        if not selection:
-            custom_messagebox(self.root, "Sélection", "Sélectionnez un site à débloquer.", icon="info")
+        items = self.listbox.selectedItems()
+        if not items:
+            CustomMessageBox.show(self, "Sélection", "Sélectionnez un site à débloquer.", icon="info")
             return
-        site = self.listbox.get(selection[0])
-        confirm = custom_messagebox(
-            self.root,
+        site = items[0].text()
+        confirm = CustomMessageBox.show(
+            self,
             "Confirmation du déblocage",
             f"Voulez-vous vraiment débloquer {site} ?",
             icon="question",
-            type="yesno"
+            type_="yesno"
         )
         if not confirm:
             return
@@ -287,57 +275,15 @@ class WebsiteBlockerApp:
                 lines = f.readlines()
             with open(HOSTS_PATH, "w", encoding="utf-8") as f:
                 for line in lines:
-                    # Correction ici : 127\.0\.0\.1 au lieu de 127\.0\.1
                     if not (
                         re.match(rf"127\.0\.0\.1\s+{re.escape(site)}$", line.strip()) or
                         re.match(rf"127\.0\.0\.1\s+www\.{re.escape(site)}$", line.strip())
                     ):
                         f.write(line)
-            # Rafraîchissement automatique après suppression
             self.load_blocked_sites()
-            custom_messagebox(self.root, "Succès", f"{site} débloqué.", icon="info")
+            CustomMessageBox.show(self, "Succès", f"{site} débloqué.", icon="info")
         except PermissionError:
-            custom_messagebox(self.root, "Erreur", "Permission refusée. Lancez ce programme en tant qu'administrateur.", icon="error")
-
-    # Fonctions pour déplacer la fenêtre
-    def start_move(self, event):
-        self.x = event.x
-        self.y = event.y
-
-    def do_move(self, event):
-        x = event.x_root - self.x
-        y = event.y_root - self.y
-        self.root.geometry(f"+{x}+{y}")
-
-    # Bouton réduire
-    def minimize_window(self):
-        self.root.update_idletasks()
-        self.root.overrideredirect(False)
-        self.root.iconify()
-        self.root.after(10, lambda: self.root.overrideredirect(True))
-
-    # Bouton aggrandir/restaurer
-    def toggle_maximize_window(self):
-        if not self.is_maximized:
-            self.normal_geometry = self.root.geometry()
-            screen_width = self.root.winfo_screenwidth()
-            screen_height = self.root.winfo_screenheight()
-            self.root.geometry(f"{screen_width}x{screen_height}+0+0")
-            self.is_maximized = True
-        else:
-            self.root.geometry(self.normal_geometry)
-            self.is_maximized = False
-        # Force le redimensionnement des widgets
-        self.root.update_idletasks()
-
-    # Bouton fermer
-    def close_window(self):
-        self.root.destroy()
-
-    def on_resize(self, event):
-        # Ajuste la taille de la listbox si la fenêtre est agrandie
-        # (optionnel, car pack(fill="both", expand=True) gère déjà la plupart des cas)
-        pass
+            CustomMessageBox.show(self, "Erreur", "Permission refusée. Lancez ce programme en tant qu'administrateur.", icon="error")
 
 if __name__ == "__main__":
     # Vérifie si le script est lancé en tant qu'administrateur
@@ -345,7 +291,6 @@ if __name__ == "__main__":
         is_admin = ctypes.windll.shell32.IsUserAnAdmin()
     except Exception:
         is_admin = False
-
     if not is_admin:
         pythonw = sys.executable.replace("python.exe", "pythonw.exe")
         if not os.path.exists(pythonw):
@@ -353,19 +298,12 @@ if __name__ == "__main__":
         ctypes.windll.shell32.ShellExecuteW(
             None, "runas", pythonw, '"' + __file__ + '"', None, 1)
         sys.exit()
-        
-    root = tk.Tk()
-    app = WebsiteBlockerApp(root)
-    root.update_idletasks()
-    # Centrage de la fenêtre principale
-    width = 520
-    height = 540
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    x = (screen_width // 2) - (width // 2)
-    y = (screen_height // 2) - (height // 2)
-    root.geometry(f"{width}x{height}+{x}+{y}")
-    root.deiconify()  # Réaffiche la fenêtre principale après configuration
-    root.lift()  # Met la fenêtre au premier plan
-    root.focus_force()  # Force le focus sur la fenêtre principale
-    root.mainloop()
+    app = QtWidgets.QApplication(sys.argv)
+    win = WebsiteBlockerApp()
+    # Centrage de la fenêtre
+    screen = app.primaryScreen().geometry()
+    x = (screen.width() - win.width()) // 2
+    y = (screen.height() - win.height()) // 2
+    win.move(x, y)
+    win.show()
+    sys.exit(app.exec_())
