@@ -345,12 +345,16 @@ if __name__ == "__main__":
         is_admin = ctypes.windll.shell32.IsUserAnAdmin()
     except Exception:
         is_admin = False
+
     if not is_admin:
-        # Relance le script avec les droits administrateur
-        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, '"' + __file__ + '"', None, 1)
+        pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+        if not os.path.exists(pythonw):
+            pythonw = sys.executable
+        ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", pythonw, '"' + __file__ + '"', None, 1)
         sys.exit()
+        
     root = tk.Tk()
-    root.withdraw()  # Masque la fenêtre principale avant toute configuration
     app = WebsiteBlockerApp(root)
     root.update_idletasks()
     # Centrage de la fenêtre principale
