@@ -32,6 +32,7 @@ jobs:
           pyinstaller --onefile --windowed --uac-admin
           --name WebsiteBlocker
           --icon app_icon.ico
+          --version-file version_info.txt
           --add-data "app_icon.ico;."
           website_blocker.py
 

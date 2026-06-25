@@ -1,8 +1,14 @@
 import sys
 import os
 import re
+import shutil
 import ctypes
+import subprocess
 from PyQt5 import QtWidgets, QtCore, QtGui
+
+APP_NAME = "Website Blocker"
+APP_VERSION = "1.1.0"
+APP_AUTHOR = "MultiHServices"
 
 def resource_path(name):
     # Résout un fichier embarqué, que l'app tourne en .py ou en .exe onefile (PyInstaller).
@@ -11,7 +17,36 @@ def resource_path(name):
 
 HOSTS_PATH = r"C:\Windows\System32\drivers\etc\hosts"
 REDIRECT_IP = "127.0.0.1"
-BLOCKED_SITE_REGEX = re.compile(r"^127\.0\.0\.1\s+([\w.-]+)$", re.MULTILINE)
+# Marqueur ajouté aux lignes gérées par l'application, pour ne jamais
+# toucher aux entrées système ou créées par un autre logiciel.
+BLOCK_TAG = "# WebsiteBlocker"
+# Capture les lignes "127.0.0.1 domaine" (avec ou sans notre marqueur).
+BLOCKED_SITE_REGEX = re.compile(r"^127\.0\.0\.1\s+([\w.-]+)\b", re.MULTILINE)
+# Validation stricte d'un nom de domaine (empêche toute injection dans hosts).
+DOMAIN_REGEX = re.compile(r"^(?=.{1,253}$)([a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,}$")
+
+
+def flush_dns():
+    """Vide le cache DNS pour que le (dé)blocage prenne effet immédiatement."""
+    try:
+        subprocess.run(
+            ["ipconfig", "/flushdns"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except Exception:
+        pass
+
+
+def backup_hosts():
+    """Crée une sauvegarde du fichier hosts avant toute modification."""
+    try:
+        if os.path.exists(HOSTS_PATH):
+            shutil.copy2(HOSTS_PATH, HOSTS_PATH + ".webblocker.bak")
+    except Exception:
+        pass
 
 # Dialogues personnalisés
 class CustomMessageBox(QtWidgets.QDialog):
@@ -176,7 +211,7 @@ class WebsiteBlockerApp(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
-        self.setFixedSize(520, 540)
+        self.setFixedSize(520, 580)
         self.setStyleSheet("background:#23272f;")
         self.setWindowIcon(QtGui.QIcon(resource_path("app_icon.ico")))  # icône de la fenêtre (compatible onefile)
         self.sites = []
@@ -189,14 +224,31 @@ class WebsiteBlockerApp(QtWidgets.QWidget):
         vbox.setSpacing(0)
         self.title_bar = TitleBar(self)
         vbox.addWidget(self.title_bar)
+        # En-tête de la liste avec compteur de sites bloqués
+        header = QtWidgets.QWidget()
+        header_layout = QtWidgets.QHBoxLayout(header)
+        header_layout.setContentsMargins(30, 6, 30, 6)
+        header_title = QtWidgets.QLabel("Sites bloqués")
+        header_title.setStyleSheet("color:#f8f8f2; font-size:14px; font-weight:bold; background:transparent;")
+        header_layout.addWidget(header_title)
+        header_layout.addStretch()
+        self.count_label = QtWidgets.QLabel("0")
+        self.count_label.setStyleSheet("color:#23272f; background:#50fa7b; font-size:12px; font-weight:bold; border-radius:9px; padding:2px 10px;")
+        header_layout.addWidget(self.count_label)
+        vbox.addWidget(header)
         # Liste
         list_frame = QtWidgets.QFrame()
         list_frame.setStyleSheet("background:#282a36; border:2px groove #44475a; border-radius:6px;")
         list_layout = QtWidgets.QVBoxLayout(list_frame)
-        list_layout.setContentsMargins(10,10,10,10)
+        list_layout.setContentsMargins(12, 12, 12, 12)
         self.listbox = QtWidgets.QListWidget()
-        self.listbox.setStyleSheet("QListWidget {background:#282a36; color:#f8f8f2; font-size:15px; border:none;} QListWidget::item:selected {background:#6272a4; color:#f8f8f2;}")
+        self.listbox.setStyleSheet("QListWidget {background:#282a36; color:#f8f8f2; font-size:15px; border:none;} QListWidget::item {padding:6px 4px; border-bottom:1px solid #353a45;} QListWidget::item:selected {background:#6272a4; color:#f8f8f2; border-radius:4px;}")
+        self.listbox.itemDoubleClicked.connect(self.remove_site)
         list_layout.addWidget(self.listbox)
+        # Astuce sous la liste
+        hint = QtWidgets.QLabel("Astuce : double-cliquez sur un site pour le débloquer.")
+        hint.setStyleSheet("color:#6272a4; font-size:11px; background:transparent;")
+        list_layout.addWidget(hint)
         vbox.addWidget(list_frame, 1)
         # Boutons
         btn_frame = QtWidgets.QWidget()
@@ -212,11 +264,20 @@ class WebsiteBlockerApp(QtWidgets.QWidget):
         self.remove_btn.clicked.connect(self.remove_site)
         btn_layout.addWidget(self.remove_btn)
         vbox.addWidget(btn_frame)
+        # Barre de statut
+        self.status_label = QtWidgets.QLabel("Prêt.")
+        self.status_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.status_label.setStyleSheet("color:#8be9a0; font-size:11px; background:transparent; padding-top:6px;")
+        vbox.addWidget(self.status_label)
         # Footer
-        footer = QtWidgets.QLabel("par MultiHServices")
+        footer = QtWidgets.QLabel(f"{APP_NAME} v{APP_VERSION} — par {APP_AUTHOR}")
         footer.setAlignment(QtCore.Qt.AlignCenter)
-        footer.setStyleSheet("color:#6272a4; font-size:11px;")
+        footer.setStyleSheet("color:#6272a4; font-size:11px; padding-bottom:6px;")
         vbox.addWidget(footer)
+
+    def set_status(self, message):
+        if hasattr(self, "status_label"):
+            self.status_label.setText(message)
 
     def load_blocked_sites(self):
         self.sites = []
@@ -235,14 +296,19 @@ class WebsiteBlockerApp(QtWidgets.QWidget):
                         self.sites.append(site)
         for site in self.sites:
             self.listbox.addItem(site)
+        if hasattr(self, "count_label"):
+            self.count_label.setText(str(len(self.sites)))
 
     def add_site(self):
         site = CustomAskString.get(self, "Ajouter un site", "Nom du site à bloquer (ex: site.com):")
         if site:
+            # On retire un éventuel schéma/chemin collé par l'utilisateur (https://site.com/page).
             site = site.strip().lower()
+            site = re.sub(r"^[a-z]+://", "", site)
+            site = site.split("/")[0].strip()
             if site.startswith("www."):
                 site = site[4:]
-            if not re.match(r"^[\w.-]+\.[a-zA-Z]{2,}$", site):
+            if not DOMAIN_REGEX.match(site):
                 CustomMessageBox.show(self, "Refusé", "Le site doit contenir une extension valide (ex: .com, .fr, .net, etc.)", icon="warning")
                 return
             if site.endswith(".test") or site == "kubernetes.docker.internal":
@@ -252,10 +318,13 @@ class WebsiteBlockerApp(QtWidgets.QWidget):
                 CustomMessageBox.show(self, "Déjà bloqué", f"{site} est déjà bloqué.", icon="info")
                 return
             try:
+                backup_hosts()
                 with open(HOSTS_PATH, "a", encoding="utf-8") as f:
-                    f.write(f"{REDIRECT_IP} {site}\n")
-                    f.write(f"{REDIRECT_IP} www.{site}\n")
+                    f.write(f"{REDIRECT_IP} {site} {BLOCK_TAG}\n")
+                    f.write(f"{REDIRECT_IP} www.{site} {BLOCK_TAG}\n")
+                flush_dns()
                 self.load_blocked_sites()
+                self.set_status(f"{site} bloqué.")
                 CustomMessageBox.show(self, "Succès", f"{site} bloqué avec succès.", icon="info")
             except PermissionError:
                 CustomMessageBox.show(self, "Erreur", "Permission refusée. Lancez ce programme en tant qu'administrateur.", icon="error")
@@ -276,16 +345,20 @@ class WebsiteBlockerApp(QtWidgets.QWidget):
         if not confirm:
             return
         try:
+            backup_hosts()
             with open(HOSTS_PATH, "r", encoding="utf-8") as f:
                 lines = f.readlines()
             with open(HOSTS_PATH, "w", encoding="utf-8") as f:
                 for line in lines:
+                    stripped = line.strip()
                     if not (
-                        re.match(rf"127\.0\.0\.1\s+{re.escape(site)}$", line.strip()) or
-                        re.match(rf"127\.0\.0\.1\s+www\.{re.escape(site)}$", line.strip())
+                        re.match(rf"127\.0\.0\.1\s+{re.escape(site)}\b", stripped) or
+                        re.match(rf"127\.0\.0\.1\s+www\.{re.escape(site)}\b", stripped)
                     ):
                         f.write(line)
+            flush_dns()
             self.load_blocked_sites()
+            self.set_status(f"{site} débloqué.")
             CustomMessageBox.show(self, "Succès", f"{site} débloqué.", icon="info")
         except PermissionError:
             CustomMessageBox.show(self, "Erreur", "Permission refusée. Lancez ce programme en tant qu'administrateur.", icon="error")
