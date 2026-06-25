@@ -4,6 +4,11 @@ import re
 import ctypes
 from PyQt5 import QtWidgets, QtCore, QtGui
 
+def resource_path(name):
+    # Résout un fichier embarqué, que l'app tourne en .py ou en .exe onefile (PyInstaller).
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, name)
+
 HOSTS_PATH = r"C:\Windows\System32\drivers\etc\hosts"
 REDIRECT_IP = "127.0.0.1"
 BLOCKED_SITE_REGEX = re.compile(r"^127\.0\.0\.1\s+([\w.-]+)$", re.MULTILINE)
@@ -173,7 +178,7 @@ class WebsiteBlockerApp(QtWidgets.QWidget):
         self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
         self.setFixedSize(520, 540)
         self.setStyleSheet("background:#23272f;")
-        self.setWindowIcon(QtGui.QIcon("app_icon.ico"))  # Ajout de l'icône à la fenêtre
+        self.setWindowIcon(QtGui.QIcon(resource_path("app_icon.ico")))  # icône de la fenêtre (compatible onefile)
         self.sites = []
         self.init_ui()
         self.load_blocked_sites()
